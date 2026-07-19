@@ -9,7 +9,7 @@ service, URL map, target HTTP proxy and global forwarding rule
 
 ```hcl
 module "load_balancer" {
-  source = "github.com/cybercapybara/terraform-google-load-balancer"
+  source = "github.com/moveeeax/terraform-google-load-balancer"
 
   project_id     = var.project_id
   name           = "web-lb"
