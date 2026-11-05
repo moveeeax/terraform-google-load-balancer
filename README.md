@@ -17,7 +17,7 @@ Plain HTTP:
 
 ```hcl
 module "load_balancer" {
-  source = "github.com/moveeeax/terraform-google-load-balancer"
+  source = "github.com/moveeeax/terraform-google-load-balancer?ref=v1.0.0"
 
   project_id     = var.project_id
   name           = "web-lb"
@@ -29,7 +29,7 @@ HTTPS with a redirect, a hardened SSL policy and Cloud Armor:
 
 ```hcl
 module "load_balancer" {
-  source = "github.com/moveeeax/terraform-google-load-balancer"
+  source = "github.com/moveeeax/terraform-google-load-balancer?ref=v1.0.0"
 
   project_id     = var.project_id
   name           = "web-lb"
