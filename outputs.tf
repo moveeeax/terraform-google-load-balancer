@@ -14,12 +14,12 @@ output "ip_address" {
 }
 
 output "https_id" {
-  description = "Identifier of the HTTPS global forwarding rule, or null when no SSL certificates were supplied."
+  description = "Identifier of the HTTPS global forwarding rule, or null when the load balancer serves no HTTPS."
   value       = one(google_compute_global_forwarding_rule.https[*].id)
 }
 
 output "https_ip_address" {
-  description = "External IP address served by the HTTPS forwarding rule, or null when no SSL certificates were supplied."
+  description = "External IP address served by the HTTPS forwarding rule, or null when the load balancer serves no HTTPS."
   value       = one(google_compute_global_forwarding_rule.https[*].ip_address)
 }
 
@@ -31,6 +31,11 @@ output "backend_service_id" {
 output "health_check_id" {
   description = "Identifier of the health check."
   value       = google_compute_health_check.this.id
+}
+
+output "managed_ssl_certificate_id" {
+  description = "Identifier of the Google-managed SSL certificate, or null when managed_ssl_certificate_domains is empty."
+  value       = one(google_compute_managed_ssl_certificate.this[*].id)
 }
 
 output "ssl_policy_id" {

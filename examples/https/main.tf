@@ -21,15 +21,6 @@ resource "google_compute_global_address" "this" {
   name    = "example-https-lb-ip"
 }
 
-resource "google_compute_managed_ssl_certificate" "this" {
-  project = var.project_id
-  name    = "example-https-lb-cert"
-
-  managed {
-    domains = [var.domain]
-  }
-}
-
 # Cloud Armor in front of the backend service. The preconfigured WAF rules are
 # only worth paying for once they are actually attached, which the module does
 # via security_policy below.
@@ -67,9 +58,11 @@ module "load_balancer" {
   project_id = var.project_id
   name       = "example-https-lb"
 
-  ip_address       = google_compute_global_address.this.address
-  ssl_certificates = [google_compute_managed_ssl_certificate.this.id]
-  security_policy  = google_compute_security_policy.this.id
+  # The module issues a Google-managed certificate for these domains. It
+  # provisions once their DNS points at the reserved address above.
+  ip_address                      = google_compute_global_address.this.address
+  managed_ssl_certificate_domains = [var.domain]
+  security_policy                 = google_compute_security_policy.this.id
 
   # Defaults worth knowing about, spelled out here:
   #   enable_http_to_https_redirect = true      HTTP 301s to HTTPS
