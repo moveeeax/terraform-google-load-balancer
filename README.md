@@ -11,6 +11,10 @@ TLS below 1.2 — GCP's implicit default policy is the `COMPATIBLE` profile, whi
 still negotiates TLS 1.0. The plain HTTP front end is then turned into a 301
 redirect to HTTPS.
 
+Set `managed_ssl_certificate_domains` instead of (or next to) `ssl_certificates`
+and the module issues a Google-managed certificate for those domains and serves
+it on the same HTTPS front end.
+
 ## Usage
 
 Plain HTTP:
@@ -42,6 +46,31 @@ module "load_balancer" {
 }
 ```
 
+HTTPS with a Google-managed certificate created by the module:
+
+```hcl
+module "load_balancer" {
+  source = "github.com/moveeeax/terraform-google-load-balancer?ref=v1.0.0"
+
+  project_id     = var.project_id
+  name           = "web-lb"
+  backend_groups = [module.mig.instance_group]
+
+  ip_address                      = google_compute_global_address.lb.address
+  managed_ssl_certificate_domains = ["example.com", "www.example.com"]
+}
+```
+
+A managed certificate stays in `PROVISIONING` until every listed domain
+resolves to the load balancer address, so reserve `ip_address` and create the
+DNS records alongside. Wildcard domains are not supported by Google-managed
+certificates. Changing the domain list replaces the certificate: its name
+carries a hash of the list and the module creates the new one before removing
+the old, so the apply does not fail on a name clash. The proxy switches to the
+new certificate right away, though, and HTTPS for the listed domains does not
+work until it finishes provisioning. To change domains without that gap, add a
+second certificate through `ssl_certificates` first.
+
 Runnable examples live in [`examples/basic`](examples/basic) and
 [`examples/https`](examples/https).
 
@@ -50,7 +79,7 @@ Runnable examples live in [`examples/basic`](examples/basic) and
 | Behaviour | Module default | GCP default without this module |
 |---|---|---|
 | Minimum TLS version | `TLS_1_2` (`MODERN` profile) | TLS 1.0 (`COMPATIBLE` profile) |
-| HTTP → HTTPS redirect | on, once certificates are supplied | none |
+| HTTP → HTTPS redirect | on, once certificates or managed certificate domains are supplied | none |
 | Backend service request logging | on, 100% sample | off |
 | Health check port | the backends' serving port | n/a |
 | Health check protocol | follows `backend_protocol` | n/a |
@@ -86,8 +115,9 @@ OpenTofu >= 1.7 for `mock_provider`. The module itself does not.
 | `health_check_request_path`     | Path requested by the health check.                                                                           | `string`       | `"/"`       |    no    |
 | `enable_health_check_logging`   | Emit health check state-change logs to Cloud Logging.                                                         | `bool`         | `true`      |    no    |
 | `ssl_certificates`              | Self links of SSL certificates to serve. Non-empty enables the HTTPS front end.                               | `list(string)` | `[]`        |    no    |
+| `managed_ssl_certificate_domains` | Domains for a Google-managed certificate the module creates and serves. Non-empty enables the HTTPS front end. At most 100, no wildcards. | `list(string)` | `[]` | no |
 | `https_port_range`              | Port range the HTTPS forwarding rule listens on.                                                              | `string`       | `"443"`     |    no    |
-| `enable_http_to_https_redirect` | 301 the plain HTTP front end to HTTPS. Only applies when `ssl_certificates` is non-empty.                     | `bool`         | `true`      |    no    |
+| `enable_http_to_https_redirect` | 301 the plain HTTP front end to HTTPS. Only applies when the HTTPS front end exists.                          | `bool`         | `true`      |    no    |
 | `ssl_policy`                    | Self link of an existing SSL policy to attach. Null makes the module manage one.                              | `string`       | `null`      |    no    |
 | `ssl_policy_profile`            | Profile of the module-managed SSL policy: `COMPATIBLE`, `MODERN` or `RESTRICTED`.                             | `string`       | `"MODERN"`  |    no    |
 | `ssl_policy_min_tls_version`    | Minimum TLS version of the module-managed SSL policy: `TLS_1_0`, `TLS_1_1` or `TLS_1_2`.                      | `string`       | `"TLS_1_2"` |    no    |
@@ -106,6 +136,7 @@ OpenTofu >= 1.7 for `mock_provider`. The module itself does not.
 | `https_ip_address`   | External IP address served by the HTTPS forwarding rule, or null when off.      |
 | `backend_service_id` | Identifier of the backend service.                                              |
 | `health_check_id`    | Identifier of the health check.                                                 |
+| `managed_ssl_certificate_id` | Identifier of the Google-managed certificate, or null when none is created. |
 | `ssl_policy_id`      | SSL policy attached to the HTTPS proxy, or null when HTTPS is off.              |
 
 ## Development

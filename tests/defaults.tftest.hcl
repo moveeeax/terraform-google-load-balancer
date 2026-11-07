@@ -244,3 +244,120 @@ run "rejects_out_of_range_sample_rate" {
 
   expect_failures = [var.logging_sample_rate]
 }
+
+run "no_managed_certificate_by_default" {
+  assert {
+    condition     = length(google_compute_managed_ssl_certificate.this) == 0
+    error_message = "No managed certificate should be created when managed_ssl_certificate_domains is empty."
+  }
+}
+
+run "managed_certificate_enables_https" {
+  variables {
+    managed_ssl_certificate_domains = ["example.com", "www.example.com"]
+  }
+
+  assert {
+    condition     = google_compute_managed_ssl_certificate.this[0].managed[0].domains == tolist(["example.com", "www.example.com"])
+    error_message = "The managed certificate must cover exactly the listed domains."
+  }
+
+  assert {
+    condition     = startswith(google_compute_managed_ssl_certificate.this[0].name, "test-lb-cert-")
+    error_message = "The managed certificate name should derive from the module name."
+  }
+
+  assert {
+    condition     = length(google_compute_target_https_proxy.this) == 1
+    error_message = "Domains for a managed certificate alone must be enough to create the HTTPS front end."
+  }
+
+  assert {
+    condition     = length(google_compute_global_forwarding_rule.https) == 1
+    error_message = "Domains for a managed certificate alone must be enough to create the HTTPS forwarding rule."
+  }
+
+  assert {
+    condition     = length(google_compute_url_map.redirect) == 1
+    error_message = "The HTTP front end should redirect once the managed certificate provides HTTPS."
+  }
+
+  assert {
+    condition     = length(google_compute_ssl_policy.this) == 1
+    error_message = "The hardened SSL policy must also apply when HTTPS comes from a managed certificate."
+  }
+}
+
+run "managed_certificate_name_follows_domains" {
+  variables {
+    managed_ssl_certificate_domains = ["example.com"]
+  }
+
+  assert {
+    condition     = google_compute_managed_ssl_certificate.this[0].name != "test-lb-cert-${substr(sha256("example.com,www.example.com"), 0, 8)}"
+    error_message = "A different domain list must produce a different certificate name, otherwise the replacement collides with the live certificate."
+  }
+
+  assert {
+    condition     = google_compute_managed_ssl_certificate.this[0].name == "test-lb-cert-${substr(sha256("example.com"), 0, 8)}"
+    error_message = "The certificate name must carry a hash of the domain list."
+  }
+}
+
+run "managed_certificate_is_served_alongside_supplied_ones" {
+  variables {
+    ssl_certificates                = ["projects/test-project/global/sslCertificates/test-cert"]
+    managed_ssl_certificate_domains = ["example.com"]
+  }
+
+  assert {
+    condition     = length(google_compute_target_https_proxy.this[0].ssl_certificates) == 2
+    error_message = "The HTTPS proxy must serve both the supplied and the managed certificate."
+  }
+
+  assert {
+    condition     = google_compute_target_https_proxy.this[0].ssl_certificates[0] == "projects/test-project/global/sslCertificates/test-cert"
+    error_message = "Supplied certificates must keep their position ahead of the managed one."
+  }
+}
+
+run "rejects_wildcard_managed_domain" {
+  command = plan
+
+  variables {
+    managed_ssl_certificate_domains = ["*.example.com"]
+  }
+
+  expect_failures = [var.managed_ssl_certificate_domains]
+}
+
+run "rejects_duplicate_managed_domains" {
+  command = plan
+
+  variables {
+    managed_ssl_certificate_domains = ["example.com", "example.com"]
+  }
+
+  expect_failures = [var.managed_ssl_certificate_domains]
+}
+
+run "rejects_too_many_managed_domains" {
+  command = plan
+
+  variables {
+    managed_ssl_certificate_domains = [for i in range(101) : "d${i}.example.com"]
+  }
+
+  expect_failures = [var.managed_ssl_certificate_domains]
+}
+
+run "rejects_more_than_15_certificates" {
+  command = plan
+
+  variables {
+    ssl_certificates                = [for i in range(15) : "projects/test-project/global/sslCertificates/cert-${i}"]
+    managed_ssl_certificate_domains = ["example.com"]
+  }
+
+  expect_failures = [google_compute_target_https_proxy.this]
+}

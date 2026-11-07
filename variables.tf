@@ -73,14 +73,35 @@ variable "ssl_certificates" {
   default     = []
 }
 
+variable "managed_ssl_certificate_domains" {
+  description = "Domains to issue a Google-managed SSL certificate for. A non-empty list creates one google_compute_managed_ssl_certificate covering all of them, serves it alongside ssl_certificates and enables the HTTPS front end. Each domain's DNS must resolve to the load balancer address before the certificate provisions, so pair this with ip_address. Changing the list replaces the certificate."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.managed_ssl_certificate_domains) <= 100
+    error_message = "A Google-managed SSL certificate covers at most 100 domains."
+  }
+
+  validation {
+    condition     = alltrue([for d in var.managed_ssl_certificate_domains : !strcontains(d, "*")])
+    error_message = "Google-managed SSL certificates do not support wildcard domains; use Certificate Manager or bring your own certificate via ssl_certificates."
+  }
+
+  validation {
+    condition     = length(distinct(var.managed_ssl_certificate_domains)) == length(var.managed_ssl_certificate_domains)
+    error_message = "managed_ssl_certificate_domains must not contain duplicates."
+  }
+}
+
 variable "https_port_range" {
-  description = "Port range the HTTPS global forwarding rule listens on. Only used when ssl_certificates is non-empty."
+  description = "Port range the HTTPS global forwarding rule listens on. Only used when ssl_certificates or managed_ssl_certificate_domains is non-empty."
   type        = string
   default     = "443"
 }
 
 variable "enable_http_to_https_redirect" {
-  description = "Point the plain HTTP front end at a 301 redirect to HTTPS instead of at the backend service. Only has an effect when ssl_certificates is non-empty."
+  description = "Point the plain HTTP front end at a 301 redirect to HTTPS instead of at the backend service. Only has an effect when ssl_certificates or managed_ssl_certificate_domains is non-empty."
   type        = bool
   default     = true
 }

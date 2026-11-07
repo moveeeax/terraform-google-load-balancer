@@ -1,6 +1,21 @@
 locals {
-  # An HTTPS front end is created as soon as the caller supplies certificates.
-  https_enabled = length(var.ssl_certificates) > 0
+  # Google-managed certificate, created only when the caller lists domains.
+  create_managed_ssl_certificate = length(var.managed_ssl_certificate_domains) > 0
+
+  # Every domain change replaces a managed certificate. A fixed name would make
+  # the replacement collide with the certificate the proxy still serves, so the
+  # name carries a hash of the domain list and the old one is destroyed only
+  # after the proxy has moved over (create_before_destroy below).
+  managed_ssl_certificate_name = "${var.name}-cert-${substr(sha256(join(",", var.managed_ssl_certificate_domains)), 0, 8)}"
+
+  ssl_certificates = concat(
+    var.ssl_certificates,
+    google_compute_managed_ssl_certificate.this[*].id,
+  )
+
+  # An HTTPS front end is created as soon as the caller supplies certificates
+  # or domains for a managed one.
+  https_enabled = length(var.ssl_certificates) > 0 || local.create_managed_ssl_certificate
 
   # Only manage an SSL policy when we serve HTTPS and the caller has not
   # brought their own. GCP's implicit default policy is the COMPATIBLE profile
@@ -118,14 +133,37 @@ resource "google_compute_target_http_proxy" "this" {
   url_map = local.http_redirect ? google_compute_url_map.redirect[0].id : google_compute_url_map.this.id
 }
 
+resource "google_compute_managed_ssl_certificate" "this" {
+  count = local.create_managed_ssl_certificate ? 1 : 0
+
+  project = var.project_id
+  name    = local.managed_ssl_certificate_name
+  type    = "MANAGED"
+
+  managed {
+    domains = var.managed_ssl_certificate_domains
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "google_compute_target_https_proxy" "this" {
   count = local.https_enabled ? 1 : 0
 
   project          = var.project_id
   name             = "${var.name}-https-proxy"
   url_map          = google_compute_url_map.this.id
-  ssl_certificates = var.ssl_certificates
+  ssl_certificates = local.ssl_certificates
   ssl_policy       = local.ssl_policy_id
+
+  lifecycle {
+    precondition {
+      condition     = length(local.ssl_certificates) <= 15
+      error_message = "A target HTTPS proxy accepts at most 15 SSL certificates, counting the managed certificate created from managed_ssl_certificate_domains."
+    }
+  }
 }
 
 resource "google_compute_global_forwarding_rule" "this" {
